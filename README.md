@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/hero-readme.png" alt="하늘을 나는 귀여운 독수리 마스코트" width="100%" />
+  <img src="./plugins/namba-search/assets/hero-readme.png" alt="하늘을 나는 귀여운 독수리 마스코트" width="100%" />
 </p>
 
 # Namba Search
@@ -63,6 +63,7 @@ $namba-search 이 페이지가 왜 읽히지 않는지 진단해줘: https://exa
 로컬에서 동작을 빠르게 확인하고 싶다면 Python 환경을 만든 뒤 실행하세요.
 
 ```bash
+cd plugins/namba-search
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .[fetch,browser]
 .venv/bin/namba-search doctor

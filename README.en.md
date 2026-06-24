@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/hero-readme.png" alt="A cute eagle mascot flying in the sky" width="100%" />
+  <img src="./plugins/namba-search/assets/hero-readme.png" alt="A cute eagle mascot flying in the sky" width="100%" />
 </p>
 
 # Namba Search
@@ -63,6 +63,7 @@ $namba-search Diagnose why this public page cannot be read: https://example.com/
 For a local smoke test:
 
 ```bash
+cd plugins/namba-search
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .[fetch,browser]
 .venv/bin/namba-search doctor

@@ -4,17 +4,19 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+MARKETPLACE_ROOT = ROOT.parent.parent if ROOT.parent.name == "plugins" else ROOT
 
 
 def test_manifest_marketplace_and_assets_exist() -> None:
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    marketplace = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
+    marketplace = json.loads((MARKETPLACE_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
     mcp = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
     assert manifest["version"] == "1.0.0"
     assert manifest["mcpServers"] == "./.mcp.json"
     assert marketplace["name"] == "namba-search"
     assert marketplace["interface"]["displayName"] == "Namba Search"
-    assert marketplace["plugins"][0]["source"]["path"] == "./"
+    assert marketplace["plugins"][0]["source"]["path"] == "./plugins/namba-search"
+    assert (MARKETPLACE_ROOT / marketplace["plugins"][0]["source"]["path"]).resolve() == ROOT.resolve()
     assert mcp["namba-search"]["cwd"] == "."
     for key in ("composerIcon", "logo", "logoDark"):
         assert (ROOT / manifest["interface"][key]).exists()
