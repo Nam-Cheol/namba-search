@@ -29,3 +29,21 @@ def test_plugin_cache_path_launch(tmp_path) -> None:
     assert proc.returncode == 0
     assert b"untrusted external data" in proc.stdout
     assert proc.stderr == b""
+
+
+def test_plugin_cache_path_cli_fallback_launch(tmp_path) -> None:
+    cache_root = tmp_path / "plugin-cache" / "namba-search"
+    ignore = shutil.ignore_patterns(".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache")
+    shutil.copytree(ROOT, cache_root, ignore=ignore)
+    proc = subprocess.run(
+        [sys.executable, "scripts/run_cli.py", "doctor"],
+        cwd=cache_root,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert proc.returncode == 0
+    payload = json.loads(proc.stdout)
+    assert payload["fallback_used"] is True
+    assert payload["mcp_tools_exposed"] is False
+    assert payload["fallback_transport"] == "plugin_backed_cli"

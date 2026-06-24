@@ -75,6 +75,17 @@ python3 -m venv .venv
 .venv/bin/namba-search fetch "https://example.com/" --selector h1
 ```
 
+Codex thread에서 `$namba-search` 스킬은 로드되지만 MCP tools가 callable tools에 노출되지 않는 환경에서는 plugin-backed CLI fallback을 사용할 수 있습니다. `codex mcp get namba-search`의 `cwd` 또는 `codex plugin list`의 설치 경로에서 실행하세요.
+
+```bash
+python3 scripts/run_cli.py research "Namba Search public web research mode" \
+  --max-tasks 40 \
+  --max-urls 20 \
+  --deadline-ms 90000
+```
+
+CLI fallback 결과에는 `fallback_used: true`, `mcp_tools_exposed: false`, `fallback_transport: "plugin_backed_cli"`가 포함됩니다. 이는 MCP가 없는 thread에서만 허용되는 우회 경로이며, 임의의 `curl`이나 기존 브라우저 프로필을 사용하지 않습니다.
+
 여러 URL을 한 번에 확인할 수도 있습니다.
 
 ```bash
@@ -113,7 +124,7 @@ Namba Search는 성공 여부와 진단 정보를 함께 돌려줍니다.
 - `trace_id`: 실패 원인을 나중에 확인할 수 있는 진단 ID입니다.
 - `trust`: 가져온 외부 콘텐츠는 항상 `untrusted_external_content`로 취급합니다.
 
-`research_public_web`은 충분한 독립 출처와 query coverage를 확보하지 못하면 `evidence_gap`을 반환합니다. 이때도 부분 근거는 `evidence`에 남지만, 최종 답변에는 `caveat`와 `quality.gaps`를 함께 반영해야 합니다.
+`research_public_web`은 충분한 독립 출처와 query coverage를 확보하지 못하면 `evidence_gap`을 반환합니다. 이때도 부분 근거는 `evidence`에 남지만, 최종 답변에는 `caveat`와 `quality.gaps`를 함께 반영해야 합니다. Discovery route가 실패한 경우에는 `discovery.tasks[].failure_category`, `discovery.tasks[].route_errors`, `discovery.tasks[].warnings`, `discovery.failure_summary`를 확인하면 네트워크, sandbox, dependency, URL policy, remote policy, HTTP transport 문제를 구분할 수 있습니다.
 
 ## 안전하게 사용하기 🔐
 

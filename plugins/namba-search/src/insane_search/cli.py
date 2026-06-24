@@ -16,6 +16,13 @@ def _json_dump(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 
 
+def _cli_fallback_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    payload.setdefault("fallback_used", True)
+    payload.setdefault("mcp_tools_exposed", False)
+    payload.setdefault("fallback_transport", "plugin_backed_cli")
+    return payload
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="namba-search",
@@ -72,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help(sys.stderr)
         return 2
     if args.command == "fetch":
-        _json_dump(fetch_public_url(
+        _json_dump(_cli_fallback_payload(fetch_public_url(
             args.url,
             selector=args.selector,
             device=args.device,
@@ -80,18 +87,18 @@ def main(argv: list[str] | None = None) -> int:
             deadline_ms=args.deadline_ms,
             max_bytes=args.max_bytes,
             include_trace=args.include_trace,
-        ))
+        )))
         return 0
     if args.command == "fetch-many":
-        _json_dump(fetch_public_urls(
+        _json_dump(_cli_fallback_payload(fetch_public_urls(
             args.urls,
             concurrency=args.concurrency,
             deadline_ms=args.deadline_ms,
             per_url_max_bytes=args.per_url_max_bytes,
-        ))
+        )))
         return 0
     if args.command == "research":
-        _json_dump(research_public_web(
+        _json_dump(_cli_fallback_payload(research_public_web(
             args.query,
             seed_urls=args.seed_urls,
             allowed_domains=args.allowed_domains,
@@ -107,13 +114,13 @@ def main(argv: list[str] | None = None) -> int:
             min_sources=args.min_sources,
             min_confidence=args.min_confidence,
             mode=args.mode,
-        ))
+        )))
         return 0
     if args.command == "trace":
-        _json_dump(inspect_fetch_trace(args.trace_id))
+        _json_dump(_cli_fallback_payload(inspect_fetch_trace(args.trace_id)))
         return 0
     if args.command == "doctor":
-        _json_dump(run_doctor())
+        _json_dump(_cli_fallback_payload(run_doctor()))
         return 0
     if args.command == "mcp":
         from .mcp_server import main as mcp_main

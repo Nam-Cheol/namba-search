@@ -469,7 +469,85 @@ def _failure_payload(url: str, verdict: str, warning: str) -> dict[str, Any]:
         "instructions_detected": False,
         "warnings": [warning],
         "trace_id": None,
+        "diagnostics": {
+            "failure_category": _classify_failure(verdict, [warning]),
+            "attempt_errors": [],
+            "trace_stored": False,
+        },
     }
+
+
+def _classify_failure(verdict: str, messages: list[Any]) -> str:
+    text = " ".join([verdict] + [str(message) for message in messages]).lower()
+    if verdict == "unsafe_url" or "ssrf_" in text or "private" in text:
+        return "url_policy"
+    if "allowed_domain" in text or "excluded_domain" in text:
+        return "domain_policy"
+    if "operation not permitted" in text or "permissionerror" in text or "sandbox" in text:
+        return "sandbox"
+    if "curl_cffi not installed" in text or "modulenotfounderror" in text or "importerror" in text:
+        return "dependency"
+    if verdict == "deadline_exceeded" or "timeout" in text or "timed out" in text:
+        return "network_timeout" if verdict == "network_error" else "deadline"
+    if "could not resolve" in text or "name or service not known" in text or "nodename nor servname" in text:
+        return "network_dns"
+    if verdict == "browser_unavailable":
+        return "browser_unavailable"
+    if verdict in {"auth_required", "login_wall", "paywall", "not_found"}:
+        return "terminal_access"
+    if verdict == "network_error":
+        return "network_transport"
+    if verdict in {"blocked", "challenge", "rate_limited", "captcha_required", "consent_wall"}:
+        return "remote_policy"
+    if verdict in {"invalid_content", "response_too_large"}:
+        return "content_policy"
+    if verdict == "internal_error":
+        return "internal"
+    return "none"
+
+
+def _payload_messages(payload: dict[str, Any]) -> list[Any]:
+    messages: list[Any] = []
+    messages.extend(payload.get("warnings") or [])
+    diagnostics = payload.get("diagnostics") or {}
+    if isinstance(diagnostics, dict):
+        for item in diagnostics.get("attempt_errors") or []:
+            if isinstance(item, dict):
+                messages.append(item.get("error"))
+            else:
+                messages.append(item)
+    return [message for message in messages if message]
+
+
+def _failure_category_from_payload(payload: dict[str, Any]) -> str:
+    diagnostics = payload.get("diagnostics") or {}
+    if isinstance(diagnostics, dict) and diagnostics.get("failure_category"):
+        return str(diagnostics["failure_category"])
+    return _classify_failure(str(payload.get("verdict") or "internal_error"), _payload_messages(payload))
+
+
+def _discovery_route_errors(payload: dict[str, Any]) -> list[Any]:
+    diagnostics = payload.get("diagnostics") or {}
+    errors: list[Any] = []
+    if isinstance(diagnostics, dict):
+        errors.extend(diagnostics.get("attempt_errors") or [])
+    if not errors:
+        errors.extend(payload.get("warnings") or [])
+    return errors[:6]
+
+
+def _failure_summary(discovery_log: list[dict[str, Any]]) -> dict[str, Any]:
+    by_category: dict[str, int] = {}
+    by_provider: dict[str, dict[str, int]] = {}
+    for item in discovery_log:
+        if item.get("ok"):
+            continue
+        category = str(item.get("failure_category") or "unknown")
+        label = str(item.get("label") or "unknown")
+        by_category[category] = by_category.get(category, 0) + 1
+        provider_counts = by_provider.setdefault(label, {})
+        provider_counts[category] = provider_counts.get(category, 0) + 1
+    return {"by_category": by_category, "by_provider": by_provider}
 
 
 def _call_fetcher(
@@ -678,7 +756,7 @@ def _empty_result(query: str, verdict: str, warning: str) -> dict[str, Any]:
             "evidence_gaps": [warning],
         },
         "results": [],
-        "discovery": {"tasks": [], "candidate_count": 0, "deduped_count": 0},
+        "discovery": {"tasks": [], "candidate_count": 0, "deduped_count": 0, "failure_summary": {}},
         "budget": {},
         "warnings": [warning],
         "trust": DEFAULT_TRUST,
@@ -841,11 +919,18 @@ def research_public_web(
                     excluded_domains=excluded_domains,
                 )
                 added = sum(1 for url in candidates if add_candidate(url, task.label))
+                warnings_for_route = [str(warning) for warning in payload.get("warnings") or []]
                 discovery_log.append({
+                    "ok": bool(payload.get("ok")),
                     "url": redact_url(task.url),
                     "label": task.label,
                     "final_url": payload.get("final_url") or redact_url(task.url),
                     "verdict": payload.get("verdict") or "internal_error",
+                    "failure_category": _failure_category_from_payload(payload),
+                    "route_errors": _discovery_route_errors(payload),
+                    "warnings": warnings_for_route,
+                    "trace_id": payload.get("trace_id"),
+                    "access_path": payload.get("access_path") or {},
                     "confidence": 0.0,
                     "evidence": [],
                     "caveat": f"candidate_urls_found:{len(candidates)}; candidate_urls_added:{added}",
@@ -923,6 +1008,7 @@ def research_public_web(
             "candidate_count": len(candidate_seen),
             "deduped_count": deduped_count,
             "adaptive_stages": stage,
+            "failure_summary": _failure_summary(discovery_log),
         },
         "budget": budget,
         "warnings": warnings,

@@ -48,6 +48,7 @@ def run_doctor() -> dict[str, Any]:
     manifest = _load_json(root / ".codex-plugin" / "plugin.json")
     mcp = _load_json(root / ".mcp.json")
     mcp_server = _mcp_server_config(mcp)
+    requested_state_dir = user_data_dir()
     state_dir = ensure_private_dir(user_data_dir())
     checks = {
         "python": {
@@ -75,7 +76,12 @@ def run_doctor() -> dict[str, Any]:
             "chrome": shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chrome"),
             "node": shutil.which("node"),
         },
-        "state_dir": {"ok": state_dir.exists(), "path": str(state_dir)},
+        "state_dir": {
+            "ok": state_dir.exists(),
+            "path": str(state_dir),
+            "requested_path": str(requested_state_dir),
+            "fallback_used": state_dir != requested_state_dir,
+        },
     }
     ok = all(v.get("ok", True) for v in checks.values() if isinstance(v, dict))
     return {"ok": ok, "version": __version__, "checks": checks}

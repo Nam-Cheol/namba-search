@@ -117,6 +117,54 @@ def test_research_budget_guard_returns_evidence_gap() -> None:
     assert payload["budget"]["stopped_by"] == "max_tasks_exhausted"
     assert "usable_sources_below_gate" in payload["caveat"]
     assert payload["results"] == []
+    assert "failure_summary" in payload["discovery"]
+
+
+def test_research_discovery_logs_route_diagnostics() -> None:
+    def fake_fetch(url: str, **kwargs) -> dict:
+        assert kwargs.get("include_links") is True
+        return {
+            "ok": False,
+            "verdict": "network_error",
+            "source_url": url,
+            "final_url": url,
+            "title": None,
+            "content": "",
+            "links": [],
+            "metadata": {"description": None, "published_at": None, "author": None},
+            "access_path": {"phase": "probe", "executor": "curl_cffi", "transform": "original"},
+            "trust": "untrusted_external_content",
+            "instructions_detected": False,
+            "warnings": ["transport_error:Could not resolve host"],
+            "trace_id": "trace_abcdef123456abcdef123456",
+            "diagnostics": {
+                "failure_category": "network_dns",
+                "attempt_errors": [
+                    {
+                        "phase": "probe",
+                        "executor": "curl_cffi",
+                        "verdict": "unknown",
+                        "error": "Could not resolve host",
+                    }
+                ],
+                "trace_stored": True,
+            },
+        }
+
+    payload = research_public_web(
+        "diagnostic route",
+        fetcher=fake_fetch,
+        max_tasks=1,
+        max_urls=2,
+        per_domain_rate_limit_ms=0,
+    )
+
+    task = payload["discovery"]["tasks"][0]
+    assert task["verdict"] == "network_error"
+    assert task["failure_category"] == "network_dns"
+    assert task["route_errors"][0]["error"] == "Could not resolve host"
+    assert task["trace_id"] == "trace_abcdef123456abcdef123456"
+    assert payload["discovery"]["failure_summary"]["by_category"] == {"network_dns": 1}
 
 
 def test_research_removes_duplicate_source_bodies() -> None:

@@ -8,7 +8,9 @@ HTTP/TLS attempts, WAF detection, and legacy fetch result model.
 from __future__ import annotations
 
 import json
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 from .engine import fetch
@@ -24,6 +26,9 @@ MIN_MAX_BYTES = 8_192
 MAX_MAX_BYTES = 5_000_000
 MAX_URLS = 10
 DEFAULT_TRUST = "untrusted_external_content"
+SECRET_FRAGMENT_RE = re.compile(
+    r"(?i)\b(token|key|secret|password|passwd|auth|authorization|cookie|session)=([^&\s]+)"
+)
 
 
 def _clamp(value: int, low: int, high: int) -> int:
@@ -37,6 +42,90 @@ def _content_type_for(content: str) -> str:
     if "<html" in stripped[:500].lower() or "<!doctype html" in stripped[:500].lower():
         return "text/html"
     return "text/plain"
+
+
+def _sanitize_error(error: Any) -> str:
+    text = str(error or "")
+    text = text.replace(str(Path.home()), "~")
+    text = SECRET_FRAGMENT_RE.sub(lambda m: f"{m.group(1)}=<redacted>", text)
+    return text[:300]
+
+
+def _attempt_errors(trace: list[Any], *, limit: int = 6) -> list[dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    for attempt in trace:
+        error = getattr(attempt, "error", None)
+        if not error:
+            continue
+        errors.append({
+            "phase": getattr(attempt, "phase", None),
+            "executor": getattr(attempt, "executor", None),
+            "verdict": getattr(attempt, "verdict", None),
+            "error": _sanitize_error(error),
+        })
+        if len(errors) >= limit:
+            break
+    return errors
+
+
+def _failure_category(verdict: str, attempt_errors: list[dict[str, Any]], warnings: list[str]) -> str:
+    text = " ".join(
+        [verdict]
+        + [str(item.get("error") or "") for item in attempt_errors]
+        + [str(warning) for warning in warnings]
+    ).lower()
+    if verdict == "unsafe_url" or "ssrf_" in text or "private" in text or "metadata endpoint" in text:
+        return "url_policy"
+    if "operation not permitted" in text or "permissionerror" in text or "sandbox" in text:
+        return "sandbox"
+    if "curl_cffi not installed" in text or "modulenotfounderror" in text or "importerror" in text:
+        return "dependency"
+    if verdict == "deadline_exceeded" or "timeout" in text or "timed out" in text:
+        return "network_timeout" if verdict == "network_error" else "deadline"
+    if "could not resolve" in text or "name or service not known" in text or "nodename nor servname" in text:
+        return "network_dns"
+    if verdict == "browser_unavailable":
+        return "browser_unavailable"
+    if verdict in {"auth_required", "login_wall", "paywall", "not_found"}:
+        return "terminal_access"
+    if verdict == "network_error":
+        return "network_transport"
+    if verdict in {"blocked", "challenge", "rate_limited", "captcha_required", "consent_wall"}:
+        return "remote_policy"
+    if verdict in {"invalid_content", "response_too_large"}:
+        return "content_policy"
+    if verdict == "internal_error":
+        return "internal"
+    return "none"
+
+
+def _diagnostics_for(
+    verdict: str,
+    trace: list[Any],
+    *,
+    warnings: list[str] | None = None,
+    trace_id: str | None = None,
+) -> dict[str, Any]:
+    safe_warnings = [_sanitize_error(warning) for warning in warnings or []]
+    errors = _attempt_errors(trace)
+    return {
+        "failure_category": _failure_category(verdict, errors, safe_warnings),
+        "attempt_errors": errors,
+        "trace_stored": trace_id is not None,
+    }
+
+
+def _store_trace_safely(
+    source_url: str,
+    final_url: str,
+    trace: list[Any],
+    *,
+    reason: str = "",
+) -> tuple[str | None, list[str]]:
+    try:
+        return store_trace(source_url, final_url, trace, reason=reason), []
+    except OSError as exc:
+        return None, [f"trace_store_unavailable:{type(exc).__name__}"]
 
 
 def _metadata_for(content: str, content_type: str) -> dict[str, Any]:
@@ -98,6 +187,7 @@ def _result_template(
     warnings: list[str] | None = None,
     trace_id: str | None = None,
     links: list[str] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = {
         "ok": ok,
@@ -113,6 +203,7 @@ def _result_template(
         "instructions_detected": instructions_detected,
         "warnings": warnings or [],
         "trace_id": trace_id,
+        "diagnostics": diagnostics or {},
     }
     if links is not None:
         payload["links"] = links
@@ -169,13 +260,15 @@ def fetch_public_url(
     max_bytes = _clamp(max_bytes, MIN_MAX_BYTES, MAX_MAX_BYTES)
     policy = classify_url(url)
     if not policy.ok:
-        trace_id = store_trace(url, url, [], reason=policy.reason)
+        trace_id, trace_warnings = _store_trace_safely(url, url, [], reason=policy.reason)
+        warnings = [policy.reason] + trace_warnings
         return _result_template(
             ok=False,
             verdict="unsafe_url",
             source_url=url,
-            warnings=[policy.reason],
+            warnings=warnings,
             trace_id=trace_id,
+            diagnostics=_diagnostics_for("unsafe_url", [], warnings=warnings, trace_id=trace_id),
         )
 
     selectors = [selector] if isinstance(selector, str) else list(selector or [])
@@ -194,19 +287,28 @@ def fetch_public_url(
             enable_phase0=True,
         )
     except Exception as exc:
-        trace_id = store_trace(url, url, [], reason=f"{type(exc).__name__}:{str(exc)[:160]}")
+        warning = f"engine_exception:{type(exc).__name__}"
+        trace_id, trace_warnings = _store_trace_safely(
+            url,
+            url,
+            [],
+            reason=f"{type(exc).__name__}:{str(exc)[:160]}",
+        )
+        warnings = [warning] + trace_warnings
         return _result_template(
             ok=False,
             verdict="internal_error",
             source_url=url,
-            warnings=[f"engine_exception:{type(exc).__name__}"],
+            warnings=warnings,
             trace_id=trace_id,
+            diagnostics=_diagnostics_for("internal_error", [], warnings=warnings, trace_id=trace_id),
         )
 
     trace_errors = [getattr(a, "error", "") or "" for a in result.trace]
     verdict = _map_engine_verdict(result.verdict or result.stop_reason, trace_errors)
     final_url = result.final_url or url
-    trace_id = store_trace(url, final_url, result.trace, reason=result.stop_reason)
+    trace_id, trace_warnings = _store_trace_safely(url, final_url, result.trace, reason=result.stop_reason)
+    diagnostics = _diagnostics_for(verdict, result.trace, warnings=trace_warnings, trace_id=trace_id)
 
     if (time.monotonic() - started) * 1000 > deadline_ms:
         return _result_template(
@@ -215,8 +317,9 @@ def fetch_public_url(
             source_url=url,
             final_url=final_url,
             access_path=_access_path_from_trace(result.trace),
-            warnings=["deadline exceeded after engine returned"],
+            warnings=["deadline exceeded after engine returned"] + trace_warnings,
             trace_id=trace_id,
+            diagnostics=diagnostics,
         )
 
     content = result.content or ""
@@ -228,19 +331,22 @@ def fetch_public_url(
             final_url=final_url,
             content_type=_content_type_for(content),
             access_path=_access_path_from_trace(result.trace),
-            warnings=["response body exceeded max_bytes"],
+            warnings=["response body exceeded max_bytes"] + trace_warnings,
             trace_id=trace_id,
+            diagnostics=diagnostics,
         )
 
     content_type = _content_type_for(content)
     sanitized, warnings, instructions_detected = _sanitize_content(content, content_type, max_bytes)
+    warnings.extend(trace_warnings)
     links = extract_public_links(content, final_url, limit=80) if include_links and "html" in content_type else None
     if result.ok and not sanitized:
         verdict = "invalid_content"
 
     ok = result.ok and verdict in {"strong_ok", "weak_ok"} and bool(sanitized)
     if include_trace:
-        warnings.append("bounded_trace_available_via_inspect_fetch_trace")
+        warnings.append("bounded_trace_available_via_inspect_fetch_trace" if trace_id else "trace_unavailable")
+    diagnostics = _diagnostics_for(verdict, result.trace, warnings=warnings, trace_id=trace_id)
 
     return _result_template(
         ok=ok,
@@ -256,6 +362,7 @@ def fetch_public_url(
         warnings=warnings,
         trace_id=trace_id,
         links=links,
+        diagnostics=diagnostics,
     )
 
 
