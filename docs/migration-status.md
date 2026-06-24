@@ -141,6 +141,8 @@ Completed:
 - `scripts/bootstrap_runtime.py` creates a versioned per-user virtualenv when
   explicitly enabled with `INSANE_SEARCH_BOOTSTRAP=1`.
 - Runtime markers are written atomically.
+- Runtime markers include the plugin version, Python version, and
+  `requirements.lock` fingerprint so stale bootstrap environments are rebuilt.
 - `scripts/doctor.py` is standalone.
 - `requirements.lock` contains hash-pinned optional runtime dependencies for
   the local macOS arm64 / CPython 3.11 validation environment.

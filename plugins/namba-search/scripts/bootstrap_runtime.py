@@ -3,11 +3,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
 import venv
 from pathlib import Path
+
+MARKER_SCHEMA = 1
 
 
 def _data_dir() -> Path:
@@ -23,8 +27,6 @@ def _data_dir() -> Path:
 
 
 def _version(plugin_root: Path) -> str:
-    import json
-
     manifest = json.loads((plugin_root / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     return str(manifest["version"])
 
@@ -55,13 +57,46 @@ def _requirements_have_packages(path: Path) -> bool:
     return False
 
 
+def _requirements_fingerprint(path: Path) -> str:
+    if not path.exists():
+        return "missing"
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _expected_marker(version: str, requirements_sha256: str) -> dict[str, str | int]:
+    return {
+        "schema": MARKER_SCHEMA,
+        "plugin_version": version,
+        "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+        "requirements_sha256": requirements_sha256,
+    }
+
+
+def _runtime_complete(marker: Path, python: Path, expected: dict[str, str | int]) -> bool:
+    if not marker.exists() or not python.exists():
+        return False
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    return all(payload.get(key) == value for key, value in expected.items())
+
+
+def _write_marker(marker: Path, expected: dict[str, str | int]) -> None:
+    tmp = marker.with_suffix(".tmp")
+    tmp.write_text(json.dumps(expected, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, marker)
+
+
 def ensure_runtime(plugin_root: str | Path) -> Path:
     root = Path(plugin_root)
     version = _version(root)
     runtime = _data_dir() / "runtime" / version
     marker = runtime / ".complete"
     python = _venv_python(runtime)
-    if marker.exists() and python.exists():
+    req = root / "requirements.lock"
+    expected = _expected_marker(version, _requirements_fingerprint(req))
+    if _runtime_complete(marker, python, expected):
         return python
 
     data = _data_dir()
@@ -72,11 +107,10 @@ def ensure_runtime(plugin_root: str | Path) -> Path:
         pass
 
     with _lock_file(data / "runtime.lock"):
-        if marker.exists() and python.exists():
+        if _runtime_complete(marker, python, expected):
             return python
         runtime.mkdir(parents=True, exist_ok=True)
         venv.EnvBuilder(with_pip=True, clear=False).create(runtime)
-        req = root / "requirements.lock"
         if _requirements_have_packages(req):
             cmd = [str(python), "-m", "pip", "install", "--require-hashes", "-r", str(req)]
             try:
@@ -85,9 +119,7 @@ def ensure_runtime(plugin_root: str | Path) -> Path:
                 print("namba-search bootstrap failed.", file=sys.stderr)
                 print("Reproduce with:", " ".join(cmd), file=sys.stderr)
                 raise
-        tmp = runtime / ".complete.tmp"
-        tmp.write_text("ok\n", encoding="utf-8")
-        os.replace(tmp, marker)
+        _write_marker(marker, expected)
     return python
 
 

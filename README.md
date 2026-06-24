@@ -86,6 +86,16 @@ python3 scripts/run_cli.py research "Namba Search public web research mode" \
 
 CLI fallback 결과에는 `fallback_used: true`, `mcp_tools_exposed: false`, `fallback_transport: "plugin_backed_cli"`가 포함됩니다. 이는 MCP가 없는 thread에서만 허용되는 우회 경로이며, 임의의 `curl`이나 기존 브라우저 프로필을 사용하지 않습니다.
 
+설치된 플러그인에서 `doctor`가 `curl_cffi`, `bs4`, `playwright` 같은 fetch 의존성을 `false`로 보고하면, 사용자의 허락을 받은 뒤 같은 설치 경로에서 bootstrap 모드로 다시 실행하세요. 플러그인 소유의 versioned runtime에 hash-pinned 의존성만 설치합니다.
+
+```bash
+INSANE_SEARCH_BOOTSTRAP=1 python3 scripts/run_cli.py doctor
+INSANE_SEARCH_BOOTSTRAP=1 python3 scripts/run_cli.py research "Namba Search public web research mode" \
+  --max-tasks 40 \
+  --max-urls 20 \
+  --deadline-ms 90000
+```
+
 여러 URL을 한 번에 확인할 수도 있습니다.
 
 ```bash
