@@ -4,10 +4,10 @@
   "description": "Resilient retrieval of public web content through validated public endpoints, HTTP strategies, and isolated browser fallback.",
   "author": {
     "name": "Namba Search contributors",
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/namba-search"
+    "url": "https://github.com/Nam-Cheol/namba-search"
   },
-  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/namba-search",
-  "repository": "https://github.com/YOUR_GITHUB_USERNAME/namba-search",
+  "homepage": "https://github.com/Nam-Cheol/namba-search",
+  "repository": "https://github.com/Nam-Cheol/namba-search",
   "license": "MIT",
   "keywords": [
     "public-web",
@@ -28,9 +28,9 @@
     "capabilities": [
       "Read"
     ],
-    "websiteURL": "https://github.com/YOUR_GITHUB_USERNAME/namba-search",
-    "privacyPolicyURL": "https://github.com/YOUR_GITHUB_USERNAME/namba-search/blob/main/PRIVACY.md",
-    "termsOfServiceURL": "https://github.com/YOUR_GITHUB_USERNAME/namba-search/blob/main/DISCLAIMER.md",
+    "websiteURL": "https://github.com/Nam-Cheol/namba-search",
+    "privacyPolicyURL": "https://github.com/Nam-Cheol/namba-search/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/Nam-Cheol/namba-search/blob/main/DISCLAIMER.md",
     "defaultPrompt": [
       "Retrieve and summarize this public URL.",
       "Diagnose why this public page cannot be read.",

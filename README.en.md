@@ -25,21 +25,20 @@ The current Skill, plugin, MCP server, and CLI identifier is `namba-search`.
 
 ## Install In Codex 🚀
 
-1. Push this project to your personal GitHub repository.
-2. Add the Git repository marketplace to Codex.
+1. Add this Git repository marketplace to Codex.
 
 ```bash
-codex plugin marketplace add YOUR_GITHUB_USERNAME/namba-search --ref main
+codex plugin marketplace add Nam-Cheol/namba-search --ref main
 ```
 
-3. Install the plugin.
+2. Install the plugin.
 
 ```bash
 codex plugin add namba-search@namba-search
 ```
 
-4. Restart Codex.
-5. Start a new thread and invoke `$namba-search`, or ask Codex to read a public URL.
+3. Restart Codex.
+4. Start a new thread and invoke `$namba-search`, or ask Codex to read a public URL.
 
 ## Quick Use 🧭
 
