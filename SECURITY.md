@@ -24,6 +24,15 @@ The policy is applied before initial fetches and again across redirects,
 warmups, transformed URLs, browser navigation, subresources, and discovered
 candidate URLs.
 
+## Query Research Boundaries
+
+`research_public_web` is a bounded public-web orchestration mode. It may use
+public discovery pages and public candidate URLs, but every discovery URL and
+candidate source still flows through the same URL policy and fetch service. It
+does not create Codex subagents, log in, use credentials, attach a browser
+profile, bypass paywalls, or continue past its configured deadline, task, URL,
+byte, per-domain rate-limit, or cost budget.
+
 ## Prompt Injection
 
 Fetched pages are untrusted external data. Normal MCP results return sanitized

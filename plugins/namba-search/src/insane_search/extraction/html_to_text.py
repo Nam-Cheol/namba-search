@@ -6,6 +6,9 @@ import re
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
+
+from insane_search.security.url_policy import classify_url, redact_url
 
 
 class _TextExtractor(HTMLParser):
@@ -68,6 +71,21 @@ class _TextExtractor(HTMLParser):
         self.parts.append(text)
 
 
+class _LinkExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_l = tag.lower()
+        if tag_l not in {"a", "area", "link"}:
+            return
+        attr = {k.lower(): (v or "") for k, v in attrs}
+        href = attr.get("href", "").strip()
+        if href:
+            self.hrefs.append(href)
+
+
 def _collapse(text: str) -> str:
     lines = [re.sub(r"[ \t\r\f\v]+", " ", unescape(line)).strip() for line in text.splitlines()]
     lines = [line for line in lines if line]
@@ -94,3 +112,49 @@ def extract_readable_text(html: str) -> dict[str, Any]:
         "author": author,
         "warnings": warnings,
     }
+
+
+def _unwrap_search_redirect(url: str) -> str:
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return url
+    host = (parts.hostname or "").lower()
+    path = parts.path or ""
+    params = parse_qs(parts.query)
+    if host.endswith("duckduckgo.com") and path.startswith("/l/") and params.get("uddg"):
+        return unquote(params["uddg"][0])
+    if host.endswith("bing.com") and path.startswith("/ck/") and params.get("u"):
+        return unquote(params["u"][0])
+    return url
+
+
+def extract_public_links(html: str, base_url: str, *, limit: int = 80) -> list[str]:
+    """Extract bounded, policy-screened public links from HTML.
+
+    This returns only redacted HTTP(S) links that pass the URL policy without DNS
+    resolution. Final fetches still run the full policy with DNS resolution.
+    """
+    parser = _LinkExtractor()
+    try:
+        parser.feed(html or "")
+    except Exception:
+        return []
+
+    links: list[str] = []
+    seen: set[str] = set()
+    for href in parser.hrefs:
+        if len(links) >= limit:
+            break
+        if href.startswith(("#", "javascript:", "mailto:", "tel:", "data:")):
+            continue
+        absolute = _unwrap_search_redirect(urljoin(base_url, href))
+        policy = classify_url(absolute, resolve_dns=False)
+        if not policy.ok:
+            continue
+        redacted = redact_url(policy.normalized_url or absolute)
+        if not redacted or redacted in seen:
+            continue
+        seen.add(redacted)
+        links.append(redacted)
+    return links

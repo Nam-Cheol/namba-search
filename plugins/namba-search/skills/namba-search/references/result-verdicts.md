@@ -13,3 +13,9 @@ Non-terminal failures can be retried through public routes while respecting the
 server deadline: `blocked`, `challenge`, `rate_limited`,
 `browser_unavailable`, `network_error`, `suspect`, `deadline_exceeded`,
 `response_too_large`, and `invalid_content`.
+
+`research_public_web` adds a query-level `evidence_gap` verdict when the
+orchestrator did not collect enough usable, independent, relevant, and
+corroborated public sources under its configured deadline and budget. Inspect
+`confidence`, `evidence`, `caveat`, `quality`, and `budget.stopped_by` before
+using partial evidence.

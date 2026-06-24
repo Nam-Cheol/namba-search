@@ -12,9 +12,10 @@ import time
 from typing import Any
 
 from .engine import fetch
-from .extraction.html_to_text import extract_readable_text
+from .extraction.html_to_text import extract_public_links, extract_readable_text
 from .extraction.injection_signals import detect_instruction_signals
 from .persistence.trace_store import load_trace, store_trace
+from .research import research_public_web as orchestrate_public_web_research
 from .security.url_policy import classify_url, redact_url
 
 MIN_DEADLINE_MS = 1_000
@@ -96,8 +97,9 @@ def _result_template(
     instructions_detected: bool = False,
     warnings: list[str] | None = None,
     trace_id: str | None = None,
+    links: list[str] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "ok": ok,
         "verdict": verdict,
         "source_url": redact_url(source_url),
@@ -112,6 +114,9 @@ def _result_template(
         "warnings": warnings or [],
         "trace_id": trace_id,
     }
+    if links is not None:
+        payload["links"] = links
+    return payload
 
 
 def _map_engine_verdict(raw: str, trace_errors: list[str]) -> str:
@@ -157,6 +162,7 @@ def fetch_public_url(
     deadline_ms: int = 45_000,
     max_bytes: int = 2_000_000,
     include_trace: bool = False,
+    include_links: bool = False,
 ) -> dict[str, Any]:
     started = time.monotonic()
     deadline_ms = _clamp(deadline_ms, MIN_DEADLINE_MS, MAX_DEADLINE_MS)
@@ -228,6 +234,7 @@ def fetch_public_url(
 
     content_type = _content_type_for(content)
     sanitized, warnings, instructions_detected = _sanitize_content(content, content_type, max_bytes)
+    links = extract_public_links(content, final_url, limit=80) if include_links and "html" in content_type else None
     if result.ok and not sanitized:
         verdict = "invalid_content"
 
@@ -248,6 +255,7 @@ def fetch_public_url(
         instructions_detected=instructions_detected,
         warnings=warnings,
         trace_id=trace_id,
+        links=links,
     )
 
 
@@ -284,3 +292,41 @@ def inspect_fetch_trace(trace_id: str) -> dict[str, Any]:
     if payload is None:
         return {"ok": False, "verdict": "not_found", "trace_id": trace_id, "trace": []}
     return {"ok": True, "verdict": "strong_ok", **payload}
+
+
+def research_public_web(
+    query: str,
+    *,
+    seed_urls: list[str] | None = None,
+    allowed_domains: list[str] | None = None,
+    excluded_domains: list[str] | None = None,
+    deadline_ms: int = 90_000,
+    max_tasks: int = 32,
+    max_urls: int = 24,
+    max_bytes: int = 2_000_000,
+    cost_budget: int | None = None,
+    per_domain_rate_limit_ms: int = 250,
+    initial_workers: int = 2,
+    max_workers: int = 8,
+    min_sources: int = 3,
+    min_confidence: float = 0.55,
+    mode: str = "auto",
+) -> dict[str, Any]:
+    return orchestrate_public_web_research(
+        query,
+        seed_urls=seed_urls,
+        allowed_domains=allowed_domains,
+        excluded_domains=excluded_domains,
+        deadline_ms=deadline_ms,
+        max_tasks=max_tasks,
+        max_urls=max_urls,
+        max_bytes=max_bytes,
+        cost_budget=cost_budget,
+        per_domain_rate_limit_ms=per_domain_rate_limit_ms,
+        initial_workers=initial_workers,
+        max_workers=max_workers,
+        min_sources=min_sources,
+        min_confidence=min_confidence,
+        mode=mode,
+        fetcher=fetch_public_url,
+    )

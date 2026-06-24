@@ -16,7 +16,17 @@ def test_initialize_contains_untrusted_instruction_first() -> None:
 def test_tools_list_exposes_only_high_level_tools() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     tools = {tool["name"] for tool in response["result"]["tools"]}
-    assert tools == {"fetch_public_url", "fetch_public_urls", "inspect_fetch_trace", "doctor"}
+    assert tools == {
+        "fetch_public_url",
+        "fetch_public_urls",
+        "research_public_web",
+        "inspect_fetch_trace",
+        "doctor",
+    }
+    research = next(tool for tool in response["result"]["tools"] if tool["name"] == "research_public_web")
+    props = research["inputSchema"]["properties"]
+    assert props["max_tasks"]["maximum"] == 200
+    assert props["max_urls"]["maximum"] == 100
 
 
 def test_tool_call_returns_structured_error_for_unsafe_url(tmp_path, monkeypatch) -> None:

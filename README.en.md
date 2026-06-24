@@ -20,6 +20,7 @@ The current Skill, plugin, MCP server, and CLI identifier is `namba-search`.
 - Read public articles, docs, posts, and pages from Codex.
 - Diagnose blocked, rate-limited, JavaScript-rendered, or hard-to-fetch public URLs.
 - Compare or summarize an explicit list of public URLs.
+- Research a query by discovering public candidate sources, cross-checking them, and reporting evidence gaps.
 - Inspect why a public page could not be retrieved.
 - Treat retrieved page content as `untrusted_external_content`.
 
@@ -58,6 +59,10 @@ https://example.com/b
 $namba-search Diagnose why this public page cannot be read: https://example.com/
 ```
 
+```text
+$namba-search Research public sources for "Namba Search public web research mode" and cross-check the evidence.
+```
+
 ## CLI Check 🛠️
 
 For a local smoke test:
@@ -76,12 +81,22 @@ Fetch an explicit list:
 .venv/bin/namba-search fetch-many "https://example.com/a" "https://example.com/b"
 ```
 
+Run bounded query research:
+
+```bash
+.venv/bin/namba-search research "Namba Search public web research mode" \
+  --max-tasks 40 \
+  --max-urls 20 \
+  --deadline-ms 90000
+```
+
 ## Available Tools 🧰
 
 | Tool | Use it when |
 | --- | --- |
 | `fetch_public_url` | You need one public URL retrieved and sanitized. |
 | `fetch_public_urls` | You supplied a bounded list of public URLs. |
+| `research_public_web` | You need query-based public source discovery, parallel fetch, dedupe, source-quality scoring, corroboration, evidence-gap detection, and synthesis. |
 | `inspect_fetch_trace` | You want body-free diagnostics for a previous `trace_id`. |
 | `doctor` | You want to check runtime, dependencies, browser support, and local state. |
 
@@ -92,8 +107,15 @@ Namba Search returns retrieval output with a verdict and diagnostics.
 - `ok`: whether the result is usable.
 - `final_url`: the final public URL after redirects.
 - `verdict`: examples include `strong_ok`, `weak_ok`, `login_wall`, `paywall`, and `unsafe_url`.
+- `confidence`: a 0-1 score based on source quality, query relevance, and corroboration.
+- `evidence`: short supporting snippets with source URLs.
+- `caveat`: remaining limits or quality-gate gaps.
 - `trace_id`: a diagnostic ID for later inspection.
 - `trust`: fetched content is always treated as `untrusted_external_content`.
+
+`research_public_web` returns `evidence_gap` when it cannot collect enough
+usable, independent, relevant, and corroborated public sources under the
+configured budget.
 
 ## Security 🔐
 
@@ -102,6 +124,7 @@ Namba Search is for **public web content** only.
 - It does not bypass login, subscriptions, authorization, private networks, local files, or credential boundaries.
 - It rejects unsafe URL targets such as localhost, private IP ranges, cloud metadata endpoints, and non-HTTP(S) schemes.
 - Browser fallback uses an isolated context, not the user's browser profile, cookies, downloads, extensions, or permission grants.
+- Query research is bounded by deadline, `max_tasks`, `max_urls`, per-domain rate limit, `max_bytes`, and cost budget.
 - Retrieved pages are untrusted external content. Page-authored instructions should never be followed as commands.
 
 See [SECURITY.md](./SECURITY.md) for the security policy and vulnerability reporting path. 🛡️
