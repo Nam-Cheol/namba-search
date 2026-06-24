@@ -11,7 +11,7 @@
 Namba Search is a Codex plugin for reading difficult public web pages more reliably. 🔎
 Use it when ordinary retrieval fails, when a public feed or endpoint is a better route, or when a page needs isolated browser rendering.
 
-This project is inspired by **Insane Search**. It is not a bypass tool. It is designed to stay inside public access boundaries and return explainable results safely. 🦅
+This project is inspired by **[Insane Search](https://github.com/fivetaku/insane-search)**. It is not a bypass tool. It is designed to stay inside public access boundaries and return explainable results safely. 🦅
 
 The current Skill, plugin, MCP server, and CLI identifier is `namba-search`.
 
