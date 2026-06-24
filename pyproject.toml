@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "namba-search"
+version = "1.0.0"
+description = "Validated public web retrieval for the Namba Search Codex plugin."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Namba Search contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+fetch = [
+  "beautifulsoup4>=4.12",
+  "curl_cffi>=0.15",
+  "PyYAML>=6.0"
+]
+browser = [
+  "playwright>=1.45"
+]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6"
+]
+
+[project.scripts]
+namba-search = "insane_search.cli:main"
+namba-search-mcp = "insane_search.mcp_server:main"
+namba-search-doctor = "insane_search.doctor:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+insane_search = ["engine/waf_profiles.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"

@@ -1,0 +1,43 @@
+{
+  "name": "namba-search",
+  "version": "1.0.0",
+  "description": "Resilient retrieval of public web content through validated public endpoints, HTTP strategies, and isolated browser fallback.",
+  "author": {
+    "name": "Namba Search contributors",
+    "url": "https://github.com/YOUR_GITHUB_USERNAME/namba-search"
+  },
+  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/namba-search",
+  "repository": "https://github.com/YOUR_GITHUB_USERNAME/namba-search",
+  "license": "MIT",
+  "keywords": [
+    "public-web",
+    "web-reader",
+    "research",
+    "mcp",
+    "retrieval",
+    "tls"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Namba Search",
+    "shortDescription": "Read difficult public webpages",
+    "longDescription": "Retrieve public web content using public endpoints, validated HTTP fallbacks, and an isolated browser when ordinary retrieval fails.",
+    "developerName": "Namba Search contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "websiteURL": "https://github.com/YOUR_GITHUB_USERNAME/namba-search",
+    "privacyPolicyURL": "https://github.com/YOUR_GITHUB_USERNAME/namba-search/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/YOUR_GITHUB_USERNAME/namba-search/blob/main/DISCLAIMER.md",
+    "defaultPrompt": [
+      "Retrieve and summarize this public URL.",
+      "Diagnose why this public page cannot be read.",
+      "Collect the public pages referenced in this task."
+    ],
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "logoDark": "./assets/logo-dark.png"
+  }
+}

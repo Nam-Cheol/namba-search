@@ -1,0 +1,16 @@
+interface:
+  display_name: "Namba Search"
+  short_description: "Retrieve difficult public webpages"
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.png"
+  default_prompt: "Use $namba-search to retrieve and summarize this public URL."
+
+policy:
+  allow_implicit_invocation: true
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "namba-search"
+      description: "Validated public web retrieval server"
+      transport: "stdio"

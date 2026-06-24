@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Namba Search">
+  <rect width="64" height="64" rx="12" fill="#101820"/>
+  <circle cx="28" cy="28" r="15" fill="none" stroke="#FEE715" stroke-width="6"/>
+  <path d="M39 39l12 12" stroke="#FEE715" stroke-width="6" stroke-linecap="round"/>
+  <path d="M20 28h16M28 20v16" stroke="#FEE715" stroke-width="4" stroke-linecap="round"/>
+</svg>

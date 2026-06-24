@@ -1,0 +1,35 @@
+# Hash-pinned optional runtime dependencies for local plugin bootstrap.
+# Generated on 2026-06-24 for macOS arm64 / CPython 3.11.
+# Install check:
+#   python3 -m pip install --require-hashes -r requirements.lock
+
+beautifulsoup4==4.15.0 \
+    --hash=sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9
+certifi==2026.6.17 \
+    --hash=sha256:2227dcbaafe0d2f59279d1762ddddc37783ed4354594f194ffc31d20f41fc3db
+cffi==2.0.0 \
+    --hash=sha256:2de9a304e27f7596cd03d16f1b7c72219bd944e99cc52b84d0145aefb07cbd3c
+curl_cffi==0.15.0 \
+    --hash=sha256:a25620d9bf989c9c029a7d1642999c4c265abb0bad811deb2f77b0b5b2b12e5b
+greenlet==3.5.2 \
+    --hash=sha256:d7792398872f89466c6671d5d193537eff163ecf7fac78d82e6ddc25017fb4f5
+markdown-it-py==4.2.0 \
+    --hash=sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
+mdurl==0.1.2 \
+    --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
+playwright==1.57.0 \
+    --hash=sha256:a4a9d65027bce48eeba842408bcc1421502dfd7e41e28d207e94260fa93ca67e
+pycparser==3.0 \
+    --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+pyee==13.0.1 \
+    --hash=sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228
+Pygments==2.20.0 \
+    --hash=sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176
+PyYAML==6.0.3 \
+    --hash=sha256:652cb6edd41e718550aad172851962662ff2681490a8a711af6a4d288dd96824
+rich==15.0.0 \
+    --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb
+soupsieve==2.8.4 \
+    --hash=sha256:e7e6b0769c8f51ed59acab6e994b00621096cfb1c640a7509295987388fbaf65
+typing_extensions==4.15.0 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
