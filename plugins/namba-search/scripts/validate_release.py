@@ -69,10 +69,11 @@ def main() -> int:
         rel = manifest.get("interface", {}).get(pointer)
         if rel and not (PLUGIN_ROOT / rel).exists():
             errors.append(f"missing asset {pointer}:{rel}")
-    if "namba-search" not in mcp:
+    servers = mcp.get("mcpServers")
+    if not isinstance(servers, dict) or "namba-search" not in servers:
         errors.append("missing namba-search MCP config")
     else:
-        server = mcp["namba-search"]
+        server = servers["namba-search"]
         for arg in server.get("args", []):
             if isinstance(arg, str) and arg.startswith("./") and not (PLUGIN_ROOT / arg).exists():
                 errors.append(f"missing MCP arg path:{arg}")

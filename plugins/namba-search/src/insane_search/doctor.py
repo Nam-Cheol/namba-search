@@ -33,10 +33,21 @@ def _module_available(name: str) -> bool:
         return False
 
 
+def _mcp_server_config(mcp: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not mcp:
+        return None
+    servers = mcp.get("mcpServers")
+    if not isinstance(servers, dict):
+        return None
+    server = servers.get("namba-search")
+    return server if isinstance(server, dict) else None
+
+
 def run_doctor() -> dict[str, Any]:
     root = _root()
     manifest = _load_json(root / ".codex-plugin" / "plugin.json")
     mcp = _load_json(root / ".mcp.json")
+    mcp_server = _mcp_server_config(mcp)
     state_dir = ensure_private_dir(user_data_dir())
     checks = {
         "python": {
@@ -51,7 +62,7 @@ def run_doctor() -> dict[str, Any]:
         },
         "manifest": {"ok": manifest is not None, "path": str(root / ".codex-plugin" / "plugin.json")},
         "mcp_config": {
-            "ok": bool(mcp and "namba-search" in mcp and mcp["namba-search"].get("cwd") == "."),
+            "ok": bool(mcp_server and mcp_server.get("cwd") == "."),
             "path": str(root / ".mcp.json"),
         },
         "dependencies": {
