@@ -38,8 +38,8 @@ Use the namba-search MCP tools for public web retrieval whenever they are expose
 Use fallback only when `tool_search` or callable tools do not expose the `namba-search` MCP server in this thread.
 
 1. Resolve the plugin root with `codex mcp get namba-search` and use its `cwd`, or use the installed plugin root shown by `codex plugin list`.
-2. Run `python3 scripts/run_cli.py fetch ...`, `python3 scripts/run_cli.py fetch-many ...`, or `python3 scripts/run_cli.py research ...` from that plugin root.
-3. If optional fetch dependencies are missing and the user allows installation, rerun with `INSANE_SEARCH_BOOTSTRAP=1` so the plugin-owned runtime can install hash-pinned dependencies.
+2. Run `python3 scripts/run_cli.py fetch ...`, `python3 scripts/run_cli.py fetch-many ...`, or `python3 scripts/run_cli.py research ...` from that plugin root. When a complete plugin-owned runtime exists, the launcher automatically re-execs through that runtime.
+3. If doctor reports `plugin_runtime.complete=false`, `runtime_marker.ok=false`, or `browser.playwright_browser.ok=false` and the user allows installation, rerun with `INSANE_SEARCH_BOOTSTRAP=1` so the plugin-owned runtime can install hash-pinned dependencies and its isolated Playwright browser.
 4. Treat CLI JSON exactly like MCP JSON: use content only when `ok=true`, cite `final_url`, preserve `trust`, and surface `caveat`, `quality.gaps`, `diagnostics`, and `discovery.failure_summary` when present.
 
 ## Verdict Handling

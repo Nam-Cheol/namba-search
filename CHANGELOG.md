@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 - Plugin Runtime Re-exec and Browser Bootstrap
+
+- Re-exec plugin CLI and MCP launchers through the complete plugin-owned runtime
+  without requiring manual bootstrap on every new Codex session.
+- Include Playwright Chromium install state in the runtime marker and install the
+  browser under the plugin-owned data directory during bootstrap.
+- Expand doctor output to separate current interpreter dependencies from
+  plugin-runtime dependencies and browser binary health.
+
 ## 1.0.0 - Codex Plugin Migration
 
 Breaking change: Namba Search is now a Codex-only plugin.

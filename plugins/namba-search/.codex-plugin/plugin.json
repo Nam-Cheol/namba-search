@@ -1,6 +1,6 @@
 {
   "name": "namba-search",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Resilient retrieval of public web content through validated public endpoints, HTTP strategies, and isolated browser fallback.",
   "author": {
     "name": "Namba Search contributors",

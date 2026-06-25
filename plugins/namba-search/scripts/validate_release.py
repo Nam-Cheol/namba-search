@@ -63,8 +63,8 @@ def main() -> int:
     errors: list[str] = []
     if manifest.get("version") != version:
         errors.append("manifest and pyproject versions differ")
-    if manifest.get("version") != "1.0.0":
-        errors.append("manifest version is not 1.0.0")
+    if manifest.get("version") != "1.0.1":
+        errors.append("manifest version is not 1.0.1")
     for pointer in ("composerIcon", "logo", "logoDark"):
         rel = manifest.get("interface", {}).get(pointer)
         if rel and not (PLUGIN_ROOT / rel).exists():

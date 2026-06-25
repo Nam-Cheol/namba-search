@@ -11,7 +11,7 @@ def test_manifest_marketplace_and_assets_exist() -> None:
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     marketplace = json.loads((MARKETPLACE_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
     mcp = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
-    assert manifest["version"] == "1.0.0"
+    assert manifest["version"] == "1.0.1"
     assert manifest["mcpServers"] == "./.mcp.json"
     assert marketplace["name"] == "namba-search"
     assert marketplace["interface"]["displayName"] == "Namba Search"
