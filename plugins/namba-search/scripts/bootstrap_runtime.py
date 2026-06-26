@@ -42,6 +42,12 @@ def _venv_python(runtime: Path) -> Path:
     return runtime / "bin" / "python"
 
 
+def _site_packages(runtime: Path) -> Path:
+    if os.name == "nt":
+        return runtime / "Lib" / "site-packages"
+    return runtime / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+
+
 def _browser_path(data_dir: Path | None = None) -> Path:
     return (data_dir or _data_dir()) / BROWSERS_DIRNAME
 
@@ -142,6 +148,37 @@ def runtime_env(plugin_root: str | Path, base_env: dict[str, str] | None = None)
     env["PYTHONPATH"] = str(src) if not current_pythonpath else str(src) + os.pathsep + current_pythonpath
     env[RUNTIME_ACTIVE_ENV] = "1"
     return env
+
+
+def activate_runtime_in_process(plugin_root: str | Path) -> bool:
+    """Expose the complete plugin runtime without replacing this process.
+
+    MCP hosts expect the stdio server to answer initialize quickly. Re-execing
+    into a per-user runtime before the first MCP response can be blocked by the
+    host sandbox and leave the client waiting for a handshake. For MCP startup,
+    importing the runtime's site-packages in-process is enough: the server can
+    list tools immediately, and tool calls still see the optional dependencies
+    and isolated Playwright browser path.
+    """
+    root = Path(plugin_root)
+    status = runtime_status(root)
+    if not status.get("complete"):
+        return False
+
+    runtime = Path(str(status["runtime_dir"]))
+    site_packages = _site_packages(runtime)
+    src = root / "src"
+    for path in (src, site_packages):
+        text = str(path)
+        if path.exists() and text not in sys.path:
+            sys.path.insert(0, text)
+
+    env = runtime_env(root)
+    pythonpath_parts = [str(site_packages), env.get("PYTHONPATH", "")]
+    os.environ["PYTHONPATH"] = os.pathsep.join(part for part in pythonpath_parts if part)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = env["PLAYWRIGHT_BROWSERS_PATH"]
+    os.environ[RUNTIME_ACTIVE_ENV] = "1"
+    return True
 
 
 def _command_text(cmd: list[str], env: dict[str, str] | None = None) -> str:

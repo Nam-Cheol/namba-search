@@ -1,6 +1,17 @@
 {
   "mcpServers": {
     "namba-search": {
+      "title": "Namba Search",
+      "description": "Retrieve and research public web content through safe public-web fetch tools.",
+      "icons": [
+        {
+          "src": "./assets/icon.png",
+          "mimeType": "image/png",
+          "sizes": [
+            "512x512"
+          ]
+        }
+      ],
       "command": "python3",
       "args": [
         "./scripts/launch_mcp.py"

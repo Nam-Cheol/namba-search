@@ -101,6 +101,11 @@ def _write_complete_marker(module, root: Path, data_dir: Path) -> Path:
     return python
 
 
+def _frame(message: dict[str, object]) -> bytes:
+    raw = json.dumps(message).encode("utf-8")
+    return f"Content-Length: {len(raw)}\r\n\r\n".encode("ascii") + raw
+
+
 def test_bootstrap_marker_records_lockfile_and_browser_fingerprint(monkeypatch, tmp_path) -> None:
     module = _load_bootstrap_runtime()
     root = _plugin_root(tmp_path)
@@ -215,27 +220,76 @@ def test_run_cli_reexecs_complete_runtime(monkeypatch, tmp_path) -> None:
     assert str(cache_root / "src") in payload["env"]["PYTHONPATH"]
 
 
-def test_launch_mcp_reexecs_complete_runtime(monkeypatch, tmp_path) -> None:
+def test_activate_runtime_in_process_adds_runtime_paths(monkeypatch, tmp_path) -> None:
     module = _load_bootstrap_runtime()
     cache_root = tmp_path / "plugin-cache" / "namba-search"
     shutil.copytree(ROOT, cache_root, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__"))
     data_dir = tmp_path / "data"
     monkeypatch.setenv("NAMBA_SEARCH_DATA_DIR", str(data_dir))
-    python = _write_complete_marker(module, cache_root, data_dir)
+    monkeypatch.delenv(module.RUNTIME_ACTIVE_ENV, raising=False)
+    _write_complete_marker(module, cache_root, data_dir)
+    site_packages = (
+        data_dir
+        / "runtime"
+        / "1.0.1"
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    site_packages.mkdir(parents=True, exist_ok=True)
+    original_path = list(sys.path)
+    old_runtime_active = os.environ.get(module.RUNTIME_ACTIVE_ENV)
+    old_browser_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    old_pythonpath = os.environ.get("PYTHONPATH")
+    monkeypatch.setattr(sys, "path", original_path.copy())
+
+    try:
+        assert module.activate_runtime_in_process(cache_root) is True
+
+        assert os.environ[module.RUNTIME_ACTIVE_ENV] == "1"
+        assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == str(data_dir / "playwright-browsers")
+        assert str(cache_root / "src") in sys.path
+        assert str(site_packages) in sys.path
+        assert str(site_packages) in os.environ["PYTHONPATH"]
+    finally:
+        for key, value in (
+            (module.RUNTIME_ACTIVE_ENV, old_runtime_active),
+            ("PLAYWRIGHT_BROWSERS_PATH", old_browser_path),
+            ("PYTHONPATH", old_pythonpath),
+        ):
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def test_launch_mcp_activates_complete_runtime_without_reexec(monkeypatch, tmp_path) -> None:
+    module = _load_bootstrap_runtime()
+    cache_root = tmp_path / "plugin-cache" / "namba-search"
+    shutil.copytree(ROOT, cache_root, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__"))
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("NAMBA_SEARCH_DATA_DIR", str(data_dir))
+    _write_complete_marker(module, cache_root, data_dir)
 
     proc = subprocess.run(
         [sys.executable, "scripts/launch_mcp.py"],
         cwd=cache_root,
+        input=_frame({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "doctor", "arguments": {}},
+        }),
         capture_output=True,
-        text=True,
         env={**os.environ, "NAMBA_SEARCH_DATA_DIR": str(data_dir)},
         timeout=10,
     )
 
     assert proc.returncode == 0
-    payload = json.loads(proc.stdout)
-    assert payload["runtime_python_used"] is True
-    assert payload["argv"] == [str(python), "-m", "insane_search.mcp_server"]
-    assert payload["env"]["NAMBA_SEARCH_RUNTIME_ACTIVE"] == "1"
-    assert payload["env"]["PLAYWRIGHT_BROWSERS_PATH"] == str(data_dir / "playwright-browsers")
-    assert str(cache_root / "src") in payload["env"]["PYTHONPATH"]
+    header, raw = proc.stdout.split(b"\r\n\r\n", 1)
+    assert b"Content-Length:" in header
+    response = json.loads(raw)
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["plugin_runtime"]["active"] is True
+    assert payload["current_python"]["executable"] == sys.executable

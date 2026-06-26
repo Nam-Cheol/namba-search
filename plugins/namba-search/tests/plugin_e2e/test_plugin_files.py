@@ -17,7 +17,11 @@ def test_manifest_marketplace_and_assets_exist() -> None:
     assert marketplace["interface"]["displayName"] == "Namba Search"
     assert marketplace["plugins"][0]["source"]["path"] == "./plugins/namba-search"
     assert (MARKETPLACE_ROOT / marketplace["plugins"][0]["source"]["path"]).resolve() == ROOT.resolve()
-    assert mcp["mcpServers"]["namba-search"]["cwd"] == "."
+    server = mcp["mcpServers"]["namba-search"]
+    assert server["title"] == "Namba Search"
+    assert server["description"]
+    assert server["icons"][0]["src"] == "./assets/icon.png"
+    assert server["cwd"] == "."
     for key in ("composerIcon", "logo", "logoDark"):
         assert (ROOT / manifest["interface"][key]).exists()
 

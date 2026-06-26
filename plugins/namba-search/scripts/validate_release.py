@@ -74,6 +74,18 @@ def main() -> int:
         errors.append("missing namba-search MCP config")
     else:
         server = servers["namba-search"]
+        if server.get("title") != "Namba Search":
+            errors.append("MCP server title must be 'Namba Search'")
+        if not server.get("description"):
+            errors.append("MCP server description is required")
+        icons = server.get("icons")
+        if not isinstance(icons, list) or not icons:
+            errors.append("MCP server icons are required")
+        else:
+            for icon in icons:
+                rel = icon.get("src") if isinstance(icon, dict) else None
+                if not isinstance(rel, str) or not (PLUGIN_ROOT / rel).exists():
+                    errors.append(f"missing MCP icon:{rel}")
         for arg in server.get("args", []):
             if isinstance(arg, str) and arg.startswith("./") and not (PLUGIN_ROOT / arg).exists():
                 errors.append(f"missing MCP arg path:{arg}")

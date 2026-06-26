@@ -223,6 +223,8 @@ def _wall_verdict(lowered: str) -> Optional[tuple[Verdict, str]]:
         "cf-turnstile",
         "captcha required",
         "please complete the captcha",
+        "please complete the following challenge",
+        "select all squares",
     )
     if any(marker in compact for marker in captcha_markers):
         return Verdict.CAPTCHA_REQUIRED, "captcha_marker"

@@ -56,6 +56,17 @@ def test_200_captcha_required() -> None:
     assert not result.ok
 
 
+def test_duckduckgo_image_challenge_is_captcha_required() -> None:
+    html = (
+        "<html><body>Unfortunately, bots use DuckDuckGo too. "
+        "Please complete the following challenge to confirm this search was made by a human. "
+        "Select all squares containing a duck.</body></html>"
+    )
+    result = validate(_Resp(202, html))
+    assert result.verdict == Verdict.CAPTCHA_REQUIRED
+    assert not result.ok
+
+
 def test_204_with_selector_is_invalid_content() -> None:
     result = validate(_Resp(204, ""), success_selectors=["article"])
     assert result.verdict == Verdict.INVALID_CONTENT

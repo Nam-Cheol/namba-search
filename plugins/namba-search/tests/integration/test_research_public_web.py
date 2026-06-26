@@ -187,3 +187,73 @@ def test_research_removes_duplicate_source_bodies() -> None:
     assert len(payload["results"]) == 1
     assert payload["discovery"]["deduped_count"] == 1
     assert payload["budget"]["stopped_by"] == "max_tasks_exhausted"
+
+
+def test_research_uses_yahoo_redirect_and_instagram_metadata_evidence() -> None:
+    instagram_url = "https://www.instagram.com/p/DZGAh9skozh/"
+    yahoo_redirect = (
+        "https://r.search.yahoo.com/_ylt=fixture/RV=2/RE=1/RO=10/"
+        "RU=https%3A%2F%2Fwww.instagram.com%2Fp%2FDZGAh9skozh%2F/RK=2/RS=fixture"
+    )
+
+    def fake_fetch(url: str, **kwargs) -> dict:
+        if kwargs.get("include_links"):
+            return {
+                "ok": True,
+                "verdict": "weak_ok",
+                "source_url": url,
+                "final_url": url,
+                "title": "Yahoo fixture",
+                "content": "Instagram Jun 2, 2026 OpenAI is expanding Codex beyond software development.",
+                "links": [yahoo_redirect],
+                "metadata": {"description": None, "published_at": None, "author": None},
+                "trust": "untrusted_external_content",
+                "instructions_detected": False,
+                "warnings": [],
+                "trace_id": "trace_abcdef123456abcdef123456",
+            }
+        assert url == instagram_url
+        return {
+            "ok": False,
+            "verdict": "challenge",
+            "source_url": instagram_url,
+            "final_url": instagram_url,
+            "title": "Instagram",
+            "content_type": "text/html",
+            "content": "",
+            "metadata": {
+                "description": (
+                    "1,097 likes, 36 comments - therundownai - June 2, 2026: "
+                    "\"OpenAI is expanding Codex beyond software development with new tools "
+                    "aimed at business and knowledge workers.\""
+                ),
+                "published_at": None,
+                "author": None,
+            },
+            "access_path": {"phase": "fixture"},
+            "trust": "untrusted_external_content",
+            "instructions_detected": False,
+            "warnings": [],
+            "trace_id": "trace_abcdef123456abcdef123456",
+        }
+
+    payload = research_public_web(
+        "OpenAI Codex Instagram June 2026",
+        allowed_domains=["instagram.com"],
+        fetcher=fake_fetch,
+        max_tasks=4,
+        max_urls=2,
+        per_domain_rate_limit_ms=0,
+        initial_workers=1,
+        max_workers=1,
+    )
+
+    assert payload["ok"] is True
+    assert payload["verdict"] == "weak_ok"
+    assert payload["discovery"]["candidate_count"] == 1
+    result = payload["results"][0]
+    assert result["final_url"] == instagram_url
+    assert result["metadata_only"] is True
+    assert result["source_fetch_verdict"] == "challenge"
+    assert "metadata-only evidence" in result["caveat"]
+    assert result["evidence"]

@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import runpy
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -13,33 +15,29 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _truthy(value: str | None) -> bool:
-    return value is not None and value.lower() in {"1", "true", "yes"}
-
-
-def _maybe_reexec_runtime(root: Path) -> None:
-    if os.environ.get("NAMBA_SEARCH_RUNTIME_ACTIVE") == "1":
+def _trace_launch(event: str, **fields) -> None:
+    path = os.environ.get("NAMBA_SEARCH_MCP_TRACE_PATH")
+    if not path:
         return
-    from bootstrap_runtime import BOOTSTRAP_ENV, ensure_runtime, runtime_env, runtime_status
-
-    if _truthy(os.environ.get(BOOTSTRAP_ENV)):
-        python = ensure_runtime(root)
-    else:
-        status = runtime_status(root)
-        if not status.get("complete"):
-            return
-        python = Path(str(status["python"]))
-    if python.resolve() == Path(sys.executable).resolve():
-        return
-    os.execve(str(python), [str(python), "-m", "insane_search.mcp_server", *sys.argv[1:]], runtime_env(root))
+    try:
+        payload = {
+            "event": event,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            **fields,
+        }
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    except Exception:
+        pass
 
 
 def main() -> int:
     root = _plugin_root()
+    _trace_launch("launch_start", executable=sys.executable, root=str(root))
     src = root / "src"
     if str(src) not in sys.path:
         sys.path.insert(0, str(src))
-    _maybe_reexec_runtime(root)
+    _trace_launch("launch_run_module", src=str(src))
     runpy.run_module("insane_search.mcp_server", run_name="__main__")
     return 0
 

@@ -17,8 +17,9 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
-from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote_plus, unquote, urlencode, urlsplit, urlunsplit
 
 from insane_search.security.url_policy import classify_url, domain_matches, redact_url
 
@@ -35,9 +36,19 @@ DEFAULT_MIN_SOURCES = 3
 DISCOVERY_DOMAINS = frozenset({
     "duckduckgo.com",
     "bing.com",
+    "search.yahoo.com",
+    "r.search.yahoo.com",
     "hn.algolia.com",
     "api.crossref.org",
     "export.arxiv.org",
+})
+SOCIAL_SINGLE_SOURCE_DOMAINS = frozenset({
+    "instagram.com",
+    "threads.net",
+    "tiktok.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
 })
 
 TRACKING_QUERY_KEYS = frozenset({
@@ -76,8 +87,59 @@ STOPWORDS = frozenset({
     "where",
     "with",
 })
-
 URL_RE = re.compile(r"https?://[^\s<>'\"\])}]+", re.I)
+METADATA_EVIDENCE_VERDICTS = frozenset({
+    "blocked",
+    "captcha_required",
+    "challenge",
+    "consent_wall",
+    "login_wall",
+    "rate_limited",
+})
+MONTHS = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+QUERY_CONTEXT_TOKENS = frozenset({
+    "day",
+    "latest",
+    "month",
+    "past",
+    "recent",
+    "site",
+    "today",
+    "week",
+    "yesterday",
+    "instagram",
+    "instagram.com",
+    "twitter",
+    "twitter.com",
+    "x.com",
+    "com",
+    *MONTHS.keys(),
+})
 
 FetchPublicUrl = Callable[..., dict[str, Any]]
 
@@ -134,11 +196,41 @@ def _matches_any_domain(host: str, domains: list[str] | None) -> bool:
     return bool(host and domains and any(domain_matches(host, domain) for domain in domains))
 
 
+def _normalized_domains(domains: list[str] | None) -> set[str]:
+    normalized: set[str] = set()
+    for domain in domains or []:
+        host = str(domain or "").strip().lower().strip(".")
+        if host.startswith("www."):
+            host = host[4:]
+        if host:
+            normalized.add(host)
+    return normalized
+
+
 def _is_discovery_domain(host: str) -> bool:
     return any(domain_matches(host, domain) for domain in DISCOVERY_DOMAINS)
 
 
+def _unwrap_search_redirect_url(url: str) -> str:
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return url
+    host = _host(url)
+    if host == "r.search.yahoo.com":
+        for key, value in parse_qsl(parts.query, keep_blank_values=True):
+            if key.upper() == "RU" and value.lower().startswith(("http://", "https://")):
+                return value
+        match = re.search(r"(?:^|/)RU=([^/]+)", parts.path)
+        if match:
+            target = unquote(match.group(1))
+            if target.lower().startswith(("http://", "https://")):
+                return target
+    return url
+
+
 def _canonicalize_url(url: str) -> str | None:
+    url = _unwrap_search_redirect_url(url)
     policy = classify_url(url, resolve_dns=False)
     if not policy.ok:
         return None
@@ -186,6 +278,28 @@ def _query_tokens(query: str) -> list[str]:
     return tokens
 
 
+def _core_query_terms(tokens: list[str]) -> list[str]:
+    return [
+        token
+        for token in tokens
+        if token not in QUERY_CONTEXT_TOKENS
+        and not token.endswith(".com")
+        and not token.startswith("site")
+    ]
+
+
+def _core_terms_satisfied(tokens: list[str], matched_terms: list[str]) -> tuple[bool, str | None]:
+    core_terms = _core_query_terms(tokens)
+    if not core_terms:
+        return True, None
+    matched = set(matched_terms)
+    matched_core = [token for token in core_terms if token in matched]
+    required = len(core_terms) if len(core_terms) <= 2 else max(1, math.ceil(len(core_terms) * 0.5))
+    if len(matched_core) >= required:
+        return True, None
+    return False, f"core_query_terms_below_gate:{len(matched_core)}/{required}"
+
+
 def _query_variants(query: str) -> list[str]:
     base = re.sub(r"\s+", " ", query).strip()
     variants = [base]
@@ -204,8 +318,101 @@ def _query_variants(query: str) -> list[str]:
     return unique
 
 
+def _query_has_recency_intent(query: str) -> bool:
+    lowered = query.lower()
+    markers = (
+        "after:",
+        "before:",
+        "latest",
+        "recent",
+        "past day",
+        "past week",
+        "past month",
+        "last day",
+        "last week",
+        "last month",
+        "this month",
+        "최근",
+        "지난",
+        "이번 달",
+        "한 달",
+        "1개월",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _query_recency_days(query: str) -> int | None:
+    lowered = query.lower()
+    if any(marker in lowered for marker in ("past day", "last day", "today", "yesterday", "오늘", "어제")):
+        return 2
+    if any(marker in lowered for marker in ("past week", "last week", "this week", "최근 일주일", "지난주", "이번 주")):
+        return 8
+    if any(
+        marker in lowered
+        for marker in (
+            "past month",
+            "last month",
+            "this month",
+            "recent month",
+            "최근 한 달",
+            "한 달",
+            "1개월",
+            "지난달",
+            "이번 달",
+        )
+    ):
+        return 31
+    return None
+
+
+def _parse_public_date(text: str) -> date | None:
+    collapsed = _collapse_text(text)
+    iso_match = re.search(r"\b(20\d{2})-(\d{1,2})-(\d{1,2})\b", collapsed)
+    if iso_match:
+        try:
+            return date(int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3)))
+        except ValueError:
+            pass
+    month_match = re.search(
+        r"\b("
+        + "|".join(re.escape(month) for month in sorted(MONTHS, key=len, reverse=True))
+        + r")\.?\s+(\d{1,2}),\s+(20\d{2})\b",
+        collapsed,
+        re.I,
+    )
+    if month_match:
+        try:
+            return date(
+                int(month_match.group(3)),
+                MONTHS[month_match.group(1).lower().rstrip(".")],
+                int(month_match.group(2)),
+            )
+        except ValueError:
+            return None
+    return None
+
+
+def _recency_caveat(query: str, content: str) -> tuple[bool, str | None, str | None]:
+    days = _query_recency_days(query)
+    if days is None:
+        return True, None, None
+    published = _parse_public_date(content)
+    if published is None:
+        return True, None, "recency_requested_but_no_parseable_public_date"
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+    if published < cutoff:
+        return False, published.isoformat(), f"outside_recency_window:{published.isoformat()}<{cutoff.isoformat()}"
+    return True, published.isoformat(), None
+
+
 def _discovery_url(provider: str, query: str, page: int) -> str | None:
     encoded = quote_plus(query)
+    if provider == "yahoo":
+        suffix = f"&b={page * 7 + 1}" if page else ""
+        return f"https://search.yahoo.com/search?p={encoded}{suffix}"
+    if provider == "yahoo_recent":
+        suffix = f"&b={page * 7 + 1}" if page else ""
+        return f"https://search.yahoo.com/search?p={encoded}&btf=m{suffix}"
     if provider == "duckduckgo":
         suffix = f"&s={page * 30}" if page else ""
         return f"https://duckduckgo.com/html/?q={encoded}{suffix}"
@@ -232,7 +439,9 @@ def _discovery_url(provider: str, query: str, page: int) -> str | None:
 
 
 def _build_discovery_tasks(query: str, max_tasks: int) -> deque[ResearchTask]:
-    providers = ("duckduckgo", "bing", "wikipedia", "hn_algolia", "reddit_rss", "arxiv", "crossref")
+    providers = ["yahoo", "duckduckgo", "bing", "wikipedia", "hn_algolia", "reddit_rss", "arxiv", "crossref"]
+    if _query_has_recency_intent(query):
+        providers.insert(0, "yahoo_recent")
     variants = _query_variants(query)
     tasks: deque[ResearchTask] = deque()
     page = 0
@@ -280,6 +489,7 @@ def _candidate_allowed(
     excluded_domains: list[str] | None,
     allow_discovery_domains: bool = False,
 ) -> str | None:
+    url = _unwrap_search_redirect_url(url)
     policy = classify_url(url, resolve_dns=False)
     if not policy.ok:
         return None
@@ -425,32 +635,87 @@ def _source_caveat(payload: dict[str, Any], relevance: float, quality: float, ev
     return "; ".join(caveats) if caveats else "none"
 
 
+def _metadata_evidence_content(payload: dict[str, Any]) -> str:
+    metadata = payload.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        return ""
+    description = _collapse_text(str(metadata.get("description") or ""))
+    if len(description) < 40:
+        return ""
+    lowered = description.lower()
+    generic_failures = (
+        "something went wrong",
+        "try again later",
+        "login",
+        "log in",
+        "sign up",
+        "sign in",
+    )
+    if any(marker in lowered for marker in generic_failures) and len(description) < 160:
+        return ""
+    return description
+
+
 def _result_from_payload(query: str, tokens: list[str], task: ResearchTask, payload: dict[str, Any]) -> dict[str, Any]:
-    content = str(payload.get("content") or "")
-    quality = _source_quality(payload, content)
-    relevance, matched_terms = _relevance(query, tokens, payload, content)
-    verdict = str(payload.get("verdict") or "internal_error")
-    ok = bool(payload.get("ok")) and verdict in {"strong_ok", "weak_ok"} and bool(content)
+    body_content = str(payload.get("content") or "")
+    source_verdict = str(payload.get("verdict") or "internal_error")
+    metadata_content = _metadata_evidence_content(payload)
+    metadata_only = False
+    content = body_content
+    effective_payload = payload
+    if not content and metadata_content and source_verdict in METADATA_EVIDENCE_VERDICTS:
+        content = metadata_content
+        metadata_only = True
+        effective_payload = dict(payload)
+        effective_payload["ok"] = True
+        effective_payload["verdict"] = "weak_ok"
+
+    quality = _source_quality(effective_payload, content)
+    relevance, matched_terms = _relevance(query, tokens, effective_payload, content)
+    verdict = "weak_ok" if metadata_only else source_verdict
+    recency_ok, parsed_date, recency_warning = _recency_caveat(query, content)
+    core_ok, core_warning = _core_terms_satisfied(tokens, matched_terms)
+    ok = (
+        bool(payload.get("ok")) and source_verdict in {"strong_ok", "weak_ok"} and bool(content)
+    ) or (
+        metadata_only and bool(matched_terms) and relevance >= 0.15
+    )
+    if ok and (not recency_ok or not core_ok):
+        ok = False
     verdict_score = 1.0 if verdict == "strong_ok" else 0.84 if verdict == "weak_ok" else 0.0
     confidence = 0.0
     evidence: list[dict[str, Any]] = []
     if ok:
         evidence = _snippets(content, matched_terms)
         confidence = max(0.05, min(1.0, 0.10 + relevance * 0.43 + quality * 0.37 + verdict_score * 0.10))
+    caveat = _source_caveat(effective_payload, relevance, quality, evidence)
+    if metadata_only:
+        prefix = f"metadata-only evidence from public page metadata; source fetch verdict was {source_verdict}"
+        caveat = prefix if caveat == "none" else f"{prefix}; {caveat}"
+    if recency_warning:
+        caveat = recency_warning if caveat == "none" else f"{caveat}; {recency_warning}"
+    if core_warning:
+        caveat = core_warning if caveat == "none" else f"{caveat}; {core_warning}"
+    metadata = payload.get("metadata") or {"description": None, "published_at": None, "author": None}
+    if isinstance(metadata, dict) and parsed_date and not metadata.get("published_at"):
+        metadata = dict(metadata)
+        metadata["published_at"] = parsed_date
     return {
         "ok": ok,
         "source_url": payload.get("source_url") or redact_url(task.url),
         "final_url": payload.get("final_url") or redact_url(task.url),
         "title": payload.get("title"),
         "verdict": verdict,
+        "source_fetch_verdict": source_verdict,
+        "metadata_only": metadata_only,
         "confidence": round(confidence, 3),
         "source_quality": quality,
         "relevance": relevance,
         "matched_terms": matched_terms,
         "evidence": evidence,
-        "caveat": _source_caveat(payload, relevance, quality, evidence),
+        "caveat": caveat,
         "trace_id": payload.get("trace_id"),
-        "metadata": payload.get("metadata") or {"description": None, "published_at": None, "author": None},
+        "metadata": metadata,
         "trust": payload.get("trust") or DEFAULT_TRUST,
     }
 
@@ -621,10 +886,12 @@ def _evaluate_quality(
     min_sources: int,
     min_confidence: float,
     max_urls: int,
+    allowed_domains: list[str] | None = None,
 ) -> dict[str, Any]:
     usable = [r for r in results if r.get("ok") and r.get("evidence")]
     domains = sorted({_host(str(r.get("final_url") or "")) for r in usable if _host(str(r.get("final_url") or ""))})
-    token_domains: dict[str, set[str]] = {token: set() for token in tokens}
+    coverage_tokens = _core_query_terms(tokens) or tokens
+    token_domains: dict[str, set[str]] = {token: set() for token in coverage_tokens}
     for result in usable:
         host = _host(str(result.get("final_url") or ""))
         for token in result.get("matched_terms") or []:
@@ -632,17 +899,18 @@ def _evaluate_quality(
                 token_domains[token].add(host)
     covered_terms = sorted(token for token, hosts in token_domains.items() if hosts)
     corroborated_terms = sorted(token for token, hosts in token_domains.items() if len(hosts) >= 2)
-    coverage = len(covered_terms) / max(1, len(tokens)) if tokens else 0.0
+    coverage = len(covered_terms) / max(1, len(coverage_tokens)) if coverage_tokens else 0.0
     avg_conf = sum(float(r.get("confidence") or 0.0) for r in usable) / max(1, len(usable))
     high_quality = sum(1 for r in usable if float(r.get("source_quality") or 0.0) >= 0.65)
     source_target = max(1, min(min_sources, max_urls))
-    domain_target = 1 if source_target == 1 else 2
+    single_domain_scope = len(_normalized_domains(allowed_domains)) == 1
+    domain_target = 1 if source_target == 1 or single_domain_scope else 2
     gaps: list[str] = []
     if len(usable) < source_target:
         gaps.append(f"usable_sources_below_gate:{len(usable)}/{source_target}")
     if len(domains) < domain_target:
         gaps.append(f"independent_domains_below_gate:{len(domains)}/{domain_target}")
-    if tokens and coverage < 0.50:
+    if coverage_tokens and coverage < 0.50:
         gaps.append(f"query_coverage_below_gate:{coverage:.2f}/0.50")
     if usable and avg_conf < min_confidence:
         gaps.append(f"confidence_below_gate:{avg_conf:.2f}/{min_confidence:.2f}")
@@ -650,7 +918,7 @@ def _evaluate_quality(
         gaps.append("no_query_terms_corroborated_across_domains")
 
     domain_score = min(1.0, len(domains) / max(1, domain_target + 1))
-    corroboration_score = min(1.0, len(corroborated_terms) / max(1, math.ceil(max(1, len(tokens)) / 3)))
+    corroboration_score = min(1.0, len(corroborated_terms) / max(1, math.ceil(max(1, len(coverage_tokens)) / 3)))
     confidence = max(
         0.0,
         min(1.0, avg_conf * 0.45 + coverage * 0.25 + domain_score * 0.18 + corroboration_score * 0.12),
@@ -797,11 +1065,20 @@ def research_public_web(
     per_domain_rate_limit_ms = _clamp(per_domain_rate_limit_ms, 0, 10_000, 250)
     max_workers = _clamp(max_workers, 1, 16, 8)
     initial_workers = _clamp(initial_workers, 1, max_workers, 2)
+    normalized_allowed_domains = _normalized_domains(allowed_domains)
+    single_social_domain_scope = (
+        len(normalized_allowed_domains) == 1
+        and next(iter(normalized_allowed_domains)) in SOCIAL_SINGLE_SOURCE_DOMAINS
+    )
     min_sources = _clamp(min_sources, 1, 10, DEFAULT_MIN_SOURCES)
+    if min_sources == DEFAULT_MIN_SOURCES and single_social_domain_scope:
+        min_sources = 1
     try:
         min_confidence = max(0.0, min(1.0, float(min_confidence)))
     except (TypeError, ValueError):
         min_confidence = 0.55
+    if min_confidence == 0.55 and single_social_domain_scope:
+        min_confidence = 0.40
     if mode not in {"auto", "http_only", "browser_allowed"}:
         mode = "auto"
 
@@ -852,6 +1129,7 @@ def research_public_web(
         min_sources=min_sources,
         min_confidence=min_confidence,
         max_urls=max_urls,
+        allowed_domains=allowed_domains,
     )
 
     while not quality["sufficient"]:
@@ -961,6 +1239,7 @@ def research_public_web(
             min_sources=min_sources,
             min_confidence=min_confidence,
             max_urls=max_urls,
+            allowed_domains=allowed_domains,
         )
         if not quality["sufficient"]:
             worker_count = min(max_workers, worker_count * 2)

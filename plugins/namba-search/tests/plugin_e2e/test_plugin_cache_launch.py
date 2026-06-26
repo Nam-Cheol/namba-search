@@ -14,6 +14,10 @@ def _frame(message: dict) -> bytes:
     return f"Content-Length: {len(raw)}\r\n\r\n".encode("ascii") + raw
 
 
+def _json_line(message: dict) -> bytes:
+    return json.dumps(message).encode("utf-8") + b"\n"
+
+
 def test_plugin_cache_path_launch(tmp_path) -> None:
     cache_root = tmp_path / "plugin-cache" / "namba-search"
     ignore = shutil.ignore_patterns(".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache")
@@ -28,6 +32,25 @@ def test_plugin_cache_path_launch(tmp_path) -> None:
     )
     assert proc.returncode == 0
     assert b"untrusted external data" in proc.stdout
+    assert proc.stderr == b""
+
+
+def test_plugin_cache_path_launch_accepts_codex_stdio_json_lines(tmp_path) -> None:
+    cache_root = tmp_path / "plugin-cache" / "namba-search"
+    ignore = shutil.ignore_patterns(".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache")
+    shutil.copytree(ROOT, cache_root, ignore=ignore)
+    payload = _json_line({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+    proc = subprocess.run(
+        [sys.executable, "scripts/launch_mcp.py"],
+        cwd=cache_root,
+        input=payload,
+        capture_output=True,
+        timeout=10,
+    )
+    assert proc.returncode == 0
+    response = json.loads(proc.stdout)
+    assert response["id"] == 1
+    assert response["result"]["serverInfo"]["name"] == "namba-search"
     assert proc.stderr == b""
 
 
