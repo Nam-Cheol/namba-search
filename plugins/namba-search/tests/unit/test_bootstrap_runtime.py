@@ -91,7 +91,23 @@ def _write_complete_marker(module, root: Path, data_dir: Path) -> Path:
     version = module._version(root)
     runtime = data_dir / "runtime" / version
     python = module._venv_python(runtime)
-    _write_runtime_python(python, {"runtime_python_used": True})
+    modules = {
+        "curl_cffi": True,
+        "bs4": True,
+        "yaml": True,
+        "playwright": True,
+    }
+    _write_runtime_python(
+        python,
+        {
+            "runtime_python_used": True,
+            "ok": True,
+            "executable": str(python),
+            "version": ".".join(str(part) for part in sys.version_info[:3]),
+            "modules": modules,
+            **modules,
+        },
+    )
     expected = module._expected_marker(
         version,
         module._requirements_fingerprint(root / "requirements.lock"),
