@@ -39,11 +39,17 @@ codex plugin add namba-search@namba-search
 ```
 
 3. Codex를 재시작합니다.
-4. 새 스레드에서 `$namba-search`를 호출하거나, Codex에게 공개 URL을 읽어 달라고 요청합니다.
+4. 설치된 MCP 서버 등록을 확인합니다.
+
+```bash
+codex mcp get namba-search --json
+```
+
+이 명령은 플러그인이 Codex에 등록됐는지 확인하는 용도입니다. 새 스레드에서 `namba-search` MCP tools가 callable tools로 노출되는 환경에서는 `$namba-search`를 호출하거나 Codex에게 공개 URL을 읽어 달라고 요청할 수 있습니다. 스킬은 보이지만 MCP tools가 노출되지 않는 환경에서는 아래의 plugin-backed CLI fallback을 사용하세요.
 
 ## 바로 써보기 🧭
 
-Codex 대화에서 이렇게 요청할 수 있습니다.
+MCP tools가 노출된 Codex 대화에서는 이렇게 요청할 수 있습니다.
 
 ```text
 $namba-search 이 공개 URL을 읽고 핵심만 요약해줘: https://example.com/
@@ -65,7 +71,7 @@ $namba-search "Namba Search public web research mode"에 대해 공개 출처를
 
 ## CLI로 확인하기 🛠️
 
-로컬에서 동작을 빠르게 확인하고 싶다면 Python 환경을 만든 뒤 실행하세요.
+repo checkout에서 동작을 빠르게 확인하고 싶다면 Python 환경을 만든 뒤 실행하세요. 이 smoke test는 패키지와 fetch 경로를 확인하는 용도이며, Codex thread에서 MCP tools가 callable tools로 노출됐다는 증거는 아닙니다.
 
 ```bash
 cd plugins/namba-search
@@ -75,18 +81,19 @@ python3 -m venv .venv
 .venv/bin/namba-search fetch "https://example.com/" --selector h1
 ```
 
-Codex thread에서 `$namba-search` 스킬은 로드되지만 MCP tools가 callable tools에 노출되지 않는 환경에서는 plugin-backed CLI fallback을 사용할 수 있습니다. `codex mcp get namba-search`의 `cwd` 또는 `codex plugin list`의 설치 경로에서 실행하세요.
+Codex thread에서 `$namba-search` 스킬은 로드되지만 MCP tools가 callable tools에 노출되지 않는 환경에서는 plugin-backed CLI fallback을 사용할 수 있습니다. `codex mcp get namba-search --json`의 `transport.cwd`로 이동한 뒤 실행하세요.
 
 ```bash
+python3 scripts/run_cli.py doctor
 python3 scripts/run_cli.py research "Namba Search public web research mode" \
   --max-tasks 40 \
   --max-urls 20 \
   --deadline-ms 90000
 ```
 
-CLI fallback 결과에는 `fallback_used: true`, `mcp_tools_exposed: false`, `fallback_transport: "plugin_backed_cli"`가 포함됩니다. 이는 MCP가 없는 thread에서만 허용되는 우회 경로이며, 임의의 `curl`이나 기존 브라우저 프로필을 사용하지 않습니다.
+CLI fallback 결과에는 `fallback_used: true`, `mcp_tools_exposed: false`, `fallback_transport: "plugin_backed_cli"`가 포함됩니다. 이는 MCP tools가 thread에 노출되지 않을 때만 쓰는 플러그인 소유 경로이며, 임의의 `curl`이나 기존 브라우저 프로필을 사용하지 않습니다.
 
-설치된 플러그인에서 `doctor`가 `curl_cffi`, `bs4`, `playwright` 같은 fetch 의존성을 `false`로 보고하면, 사용자의 허락을 받은 뒤 같은 설치 경로에서 bootstrap 모드로 다시 실행하세요. 플러그인 소유의 versioned runtime에 hash-pinned 의존성만 설치합니다.
+설치된 플러그인에서 `doctor`가 `curl_cffi`, `bs4`, `playwright` 같은 fetch 의존성을 `false`로 보고하면, 사용자의 허락을 받은 뒤 같은 `transport.cwd`에서 bootstrap 모드로 다시 실행하세요. 이 단계는 네트워크 접근이 필요할 수 있으며, 플러그인 소유의 versioned runtime에 `requirements.lock`으로 고정된 의존성과 격리된 Playwright 브라우저만 설치합니다.
 
 ```bash
 INSANE_SEARCH_BOOTSTRAP=1 python3 scripts/run_cli.py doctor

@@ -39,11 +39,17 @@ codex plugin add namba-search@namba-search
 ```
 
 3. Restart Codex.
-4. Start a new thread and invoke `$namba-search`, or ask Codex to read a public URL.
+4. Confirm the installed MCP server registration.
+
+```bash
+codex mcp get namba-search --json
+```
+
+This confirms that the plugin is registered with Codex. In threads where the `namba-search` MCP tools are exposed as callable tools, invoke `$namba-search` or ask Codex to read a public URL. If the skill is present but the MCP tools are not exposed in the thread, use the plugin-backed CLI fallback below.
 
 ## Quick Use 🧭
 
-In a Codex thread, ask:
+In a Codex thread where the MCP tools are exposed, ask:
 
 ```text
 $namba-search Read this public URL and summarize the key points: https://example.com/
@@ -65,7 +71,7 @@ $namba-search Research public sources for "Namba Search public web research mode
 
 ## CLI Check 🛠️
 
-For a local smoke test:
+For a local smoke test from a repository checkout:
 
 ```bash
 cd plugins/namba-search
@@ -73,6 +79,36 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .[fetch,browser]
 .venv/bin/namba-search doctor
 .venv/bin/namba-search fetch "https://example.com/" --selector h1
+```
+
+This checks the package and fetch path. It does not prove that Codex exposed the MCP tools as callable tools in a thread.
+
+When the `$namba-search` skill loads but the MCP tools are not exposed as callable tools, use the plugin-backed CLI fallback from the installed plugin root. Resolve that root from `transport.cwd` in:
+
+```bash
+codex mcp get namba-search --json
+```
+
+Then run from that directory:
+
+```bash
+python3 scripts/run_cli.py doctor
+python3 scripts/run_cli.py research "Namba Search public web research mode" \
+  --max-tasks 40 \
+  --max-urls 20 \
+  --deadline-ms 90000
+```
+
+CLI fallback results include `fallback_used: true`, `mcp_tools_exposed: false`, and `fallback_transport: "plugin_backed_cli"`. This path is only for threads where MCP tools are not exposed, and it does not use ad hoc `curl` or an existing browser profile.
+
+If `doctor` reports fetch dependencies such as `curl_cffi`, `bs4`, or `playwright` as `false`, rerun from the same `transport.cwd` with bootstrap mode after user approval. This step may need network access and installs only `requirements.lock`-pinned dependencies plus an isolated Playwright browser into the plugin-owned versioned runtime.
+
+```bash
+INSANE_SEARCH_BOOTSTRAP=1 python3 scripts/run_cli.py doctor
+INSANE_SEARCH_BOOTSTRAP=1 python3 scripts/run_cli.py research "Namba Search public web research mode" \
+  --max-tasks 40 \
+  --max-urls 20 \
+  --deadline-ms 90000
 ```
 
 Fetch an explicit list:
